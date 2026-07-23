@@ -1,6 +1,8 @@
 #pragma once
 
 #include <ESP8266WiFi.h>
+#include <ESP8266WebServer.h>
+#include <LittleFS.h>
 #include <WebSocketsServer.h>
 #include <ArduinoJson.h>
 #include "../protocol/protocol.h"
@@ -13,6 +15,7 @@ public:
   void loop();
 
 private:
+  ESP8266WebServer server{80};
   WebSocketsServer ws{81};
 
   void (*commandCallback)(const ControlCommand&) = nullptr;
