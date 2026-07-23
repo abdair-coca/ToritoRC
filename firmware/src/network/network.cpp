@@ -5,7 +5,12 @@ NetworkManager* NetworkManager::instance = nullptr;
 void NetworkManager::begin() {
   instance = this;
 
+  IPAddress local_IP(192, 168, 4, 1);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+
   WiFi.mode(WIFI_AP);
+  WiFi.softAPConfig(local_IP, gateway, subnet);
   WiFi.softAP("ToritoRC", "toritopass");
 
   ws.begin();
