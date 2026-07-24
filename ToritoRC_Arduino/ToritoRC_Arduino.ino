@@ -83,15 +83,9 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
     body { background: #0c0a09; color: #f5f5f4; font-family: system-ui, -apple-system, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
     
-    /* Header Status */
-    header { background: #1c1917; padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #292524; }
-    .logo { font-weight: 800; font-size: 1.1rem; color: #f59e0b; display: flex; align-items: center; gap: 6px; }
-    .badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
-    .connected { background: #064e3b; color: #34d399; border: 1px solid #059669; }
-    .disconnected { background: #7f1d1d; color: #fca5a5; border: 1px solid #dc2626; }
-    .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .dot-green { background: #10b981; box-shadow: 0 0 8px #10b981; }
-    .dot-red { background: #ef4444; }
+    /* Header */
+    header { background: #1c1917; padding: 12px 16px; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #292524; }
+    .logo { font-weight: 800; font-size: 1.2rem; color: #f59e0b; display: flex; align-items: center; gap: 8px; letter-spacing: 0.5px; }
 
     /* Dashboard */
     .dashboard { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px 16px; background: #141210; border-bottom: 1px solid #292524; }
@@ -124,10 +118,6 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
 
   <header>
     <div class="logo">🚘 ToritoRC ⚡</div>
-    <div id="status-badge" class="badge disconnected">
-      <div id="status-dot" class="dot dot-red"></div>
-      <span id="status-text">Desconectado</span>
-    </div>
   </header>
 
   <div class="dashboard">
@@ -191,7 +181,6 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
     };
 
     let ws = null;
-    let connected = false;
 
     // Audio Engine (Web Audio API)
     let audioCtx = null;
@@ -223,18 +212,9 @@ const char HTML_INDEX[] PROGMEM = R"rawliteral(
     function connectWS() {
       ws = new WebSocket('ws://' + window.location.hostname + ':81');
       
-      ws.onopen = () => {
-        connected = true;
-        document.getElementById('status-badge').className = 'badge connected';
-        document.getElementById('status-dot').className = 'dot dot-green';
-        document.getElementById('status-text').innerText = 'Conectado';
-      };
+      ws.onopen = () => {};
 
       ws.onclose = () => {
-        connected = false;
-        document.getElementById('status-badge').className = 'badge disconnected';
-        document.getElementById('status-dot').className = 'dot dot-red';
-        document.getElementById('status-text').innerText = 'Desconectado';
         setTimeout(connectWS, 1500);
       };
 
