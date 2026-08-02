@@ -5,6 +5,7 @@
 
 // ============================================================
 // AUTITO RC - Wemos D1 Mini ESP8266 + L298N
+// Control exclusivo mediante joystick web
 // Red Wi-Fi: autito-rc
 // Clave:     12345678
 // Web:       http://192.168.4.1
@@ -31,7 +32,7 @@ constexpr uint16_t DNS_PORT = 53;
 constexpr uint32_t COMMAND_TIMEOUT_MS = 450;
 constexpr uint32_t RAMP_INTERVAL_MS = 10;
 constexpr int PWM_MAX = 255;
-constexpr int RAMP_STEP = 42;  // 0 -> 255 en ~60 ms
+constexpr int RAMP_STEP = 42;  // Aceleración rápida: 0 -> 255 en unos 60 ms.
 
 int targetLeft = 0;
 int targetRight = 0;
@@ -51,41 +52,40 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   <title>Autito RC</title>
   <style>
     :root {
-      --bg-1:#07111f;
-      --bg-2:#102743;
-      --glass:rgba(255,255,255,.09);
+      --bg1:#06101d;
+      --bg2:#102b49;
+      --glass:rgba(255,255,255,.085);
       --line:rgba(255,255,255,.14);
       --text:#f7fbff;
-      --muted:#9eb3c9;
-      --cyan:#49d8ff;
-      --blue:#4c7dff;
-      --green:#45e6a8;
-      --danger:#ff6178;
-      --shadow:0 22px 70px rgba(0,0,0,.38);
+      --muted:#9cb3ca;
+      --cyan:#48ddff;
+      --blue:#4e73ff;
+      --green:#48e6aa;
+      --danger:#ff6079;
     }
 
     * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-    html, body { margin:0; min-height:100%; overflow:hidden; overscroll-behavior:none; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; overscroll-behavior:none; }
     body {
-      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+      font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
       color:var(--text);
       background:
-        radial-gradient(circle at 12% 5%, rgba(73,216,255,.18), transparent 32%),
-        radial-gradient(circle at 90% 92%, rgba(76,125,255,.22), transparent 36%),
-        linear-gradient(145deg,var(--bg-1),var(--bg-2));
-      touch-action:none;
+        radial-gradient(circle at 10% 5%,rgba(72,221,255,.20),transparent 30%),
+        radial-gradient(circle at 92% 92%,rgba(78,115,255,.24),transparent 34%),
+        linear-gradient(145deg,var(--bg1),var(--bg2));
       user-select:none;
+      touch-action:none;
     }
 
     body::before {
       content:"";
       position:fixed;
-      inset:-30%;
-      background:conic-gradient(from 20deg,transparent,rgba(73,216,255,.08),transparent 30%);
-      animation:drift 16s linear infinite;
+      inset:-45%;
+      background:conic-gradient(from 20deg,transparent,rgba(72,221,255,.075),transparent 30%);
+      animation:spin 17s linear infinite;
       pointer-events:none;
     }
-    @keyframes drift { to { transform:rotate(360deg); } }
+    @keyframes spin { to { transform:rotate(360deg); } }
 
     .app {
       position:relative;
@@ -93,7 +93,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       width:min(100%,520px);
       height:100dvh;
       margin:auto;
-      padding:max(18px,env(safe-area-inset-top)) 18px max(18px,env(safe-area-inset-bottom));
+      padding:max(17px,env(safe-area-inset-top)) 18px max(17px,env(safe-area-inset-bottom));
       display:flex;
       flex-direction:column;
       gap:14px;
@@ -102,151 +102,114 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     header { display:flex; align-items:center; justify-content:space-between; }
     .brand { display:flex; align-items:center; gap:11px; }
     .logo {
-      width:45px; height:45px; border-radius:15px;
-      display:grid; place-items:center;
-      font-size:23px;
-      background:linear-gradient(145deg,rgba(73,216,255,.28),rgba(76,125,255,.18));
+      width:46px; height:46px; border-radius:15px;
+      display:grid; place-items:center; font-size:23px;
+      background:linear-gradient(145deg,rgba(72,221,255,.27),rgba(78,115,255,.18));
       border:1px solid rgba(255,255,255,.18);
-      box-shadow:0 10px 30px rgba(73,216,255,.13), inset 0 1px rgba(255,255,255,.2);
+      box-shadow:0 12px 30px rgba(72,221,255,.13),inset 0 1px rgba(255,255,255,.2);
     }
-    h1 { font-size:18px; line-height:1.05; margin:0; letter-spacing:.2px; }
-    .subtitle { color:var(--muted); font-size:12px; margin-top:4px; }
+    h1 { margin:0; font-size:19px; line-height:1; letter-spacing:.2px; }
+    .subtitle { margin-top:5px; color:var(--muted); font-size:12px; }
     .connection {
       display:flex; align-items:center; gap:7px;
-      color:var(--muted); font-size:12px;
       padding:8px 10px; border-radius:999px;
+      color:var(--muted); font-size:12px;
       background:var(--glass); border:1px solid var(--line);
     }
     .dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 14px var(--green); }
     .dot.off { background:var(--danger); box-shadow:0 0 14px var(--danger); }
 
     .panel {
-      flex:1;
-      min-height:0;
-      display:flex;
-      flex-direction:column;
-      padding:14px;
-      border-radius:28px;
-      background:linear-gradient(145deg,rgba(255,255,255,.105),rgba(255,255,255,.045));
+      flex:1; min-height:0;
+      display:flex; flex-direction:column;
+      padding:16px;
+      border-radius:29px;
+      background:linear-gradient(145deg,rgba(255,255,255,.105),rgba(255,255,255,.042));
       border:1px solid var(--line);
-      box-shadow:var(--shadow), inset 0 1px rgba(255,255,255,.11);
+      box-shadow:0 24px 70px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.11);
       backdrop-filter:blur(18px);
     }
 
-    .tabs {
-      display:grid; grid-template-columns:1fr 1fr;
-      gap:5px; padding:5px;
-      background:rgba(0,0,0,.18);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:16px;
-    }
-    .tab {
-      border:0; border-radius:12px; padding:11px 8px;
-      color:var(--muted); background:transparent;
-      font-weight:750; font-size:13px;
-    }
-    .tab.active {
-      color:white;
-      background:linear-gradient(135deg,rgba(73,216,255,.23),rgba(76,125,255,.27));
-      box-shadow:inset 0 1px rgba(255,255,255,.16),0 8px 18px rgba(0,0,0,.15);
+    .title-row { display:flex; align-items:center; justify-content:space-between; padding:1px 3px 9px; }
+    .mode-title { font-size:14px; font-weight:800; }
+    .badge {
+      padding:6px 9px; border-radius:999px;
+      color:var(--cyan); font-size:10px; font-weight:800; letter-spacing:.7px;
+      background:rgba(72,221,255,.08); border:1px solid rgba(72,221,255,.18);
     }
 
-    .mode { flex:1; min-height:0; display:none; align-items:center; justify-content:center; flex-direction:column; }
-    .mode.active { display:flex; }
-
-    .tilt-stage { width:100%; flex:1; display:grid; place-items:center; perspective:800px; }
-    .phone-wrap { position:relative; width:185px; height:245px; display:grid; place-items:center; }
-    .halo {
-      position:absolute; width:230px; height:230px; border-radius:50%;
-      background:radial-gradient(circle,rgba(73,216,255,.2),rgba(73,216,255,.02) 55%,transparent 70%);
-      filter:blur(2px); animation:pulse 2.4s ease-in-out infinite;
-    }
-    @keyframes pulse { 50% { transform:scale(1.08); opacity:.72; } }
-    .phone {
-      position:relative;
-      width:112px; height:210px;
-      border-radius:25px;
-      border:2px solid rgba(255,255,255,.66);
-      background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.05));
-      box-shadow:0 25px 45px rgba(0,0,0,.35),inset 0 0 25px rgba(73,216,255,.09);
-      transform-style:preserve-3d;
-      transition:transform .08s linear;
-    }
-    .phone::before { content:""; position:absolute; top:8px; left:37px; width:34px; height:5px; border-radius:5px; background:rgba(255,255,255,.45); }
-    .phone::after { content:""; position:absolute; bottom:10px; left:48px; width:13px; height:13px; border:1px solid rgba(255,255,255,.42); border-radius:50%; }
-    .cross { position:absolute; inset:35px 14px; }
-    .cross::before,.cross::after { content:""; position:absolute; background:linear-gradient(90deg,transparent,rgba(73,216,255,.65),transparent); }
-    .cross::before { left:0; right:0; top:50%; height:1px; }
-    .cross::after { top:0; bottom:0; left:50%; width:1px; background:linear-gradient(transparent,rgba(73,216,255,.65),transparent); }
-    .arrow { font-size:36px; filter:drop-shadow(0 0 14px rgba(73,216,255,.8)); transition:transform .1s,opacity .1s; }
-
-    .readout { width:100%; display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
-    .metric { padding:11px 12px; border-radius:15px; background:rgba(0,0,0,.16); border:1px solid rgba(255,255,255,.08); }
-    .metric:last-child { text-align:right; }
-    .metric small { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.8px; }
-    .metric strong { font-size:17px; }
-    .speed-ring {
-      width:72px; height:72px; border-radius:50%; display:grid; place-items:center;
-      background:conic-gradient(var(--cyan) var(--speed,0%),rgba(255,255,255,.08) 0);
-      box-shadow:0 0 22px rgba(73,216,255,.13);
-    }
-    .speed-ring::before { content:""; width:57px; height:57px; border-radius:50%; background:#10233a; position:absolute; }
-    .speed-ring span { position:relative; font-size:13px; font-weight:800; }
-
-    .primary {
-      width:100%; margin-top:12px; padding:14px;
-      border:0; border-radius:16px; color:white;
-      font-size:14px; font-weight:850;
-      background:linear-gradient(135deg,var(--cyan),var(--blue));
-      box-shadow:0 14px 28px rgba(49,133,255,.24),inset 0 1px rgba(255,255,255,.45);
-    }
-    .primary:active { transform:scale(.985); }
-
-    .hint { min-height:34px; margin:9px 4px 0; color:var(--muted); font-size:11px; line-height:1.45; text-align:center; }
-
-    .joystick-stage { flex:1; width:100%; display:grid; place-items:center; }
+    .joystick-stage { flex:1; min-height:0; display:grid; place-items:center; }
     .joystick {
       position:relative;
-      width:min(68vw,285px); height:min(68vw,285px); max-width:285px; max-height:285px;
+      width:min(72vw,300px); height:min(72vw,300px);
+      max-width:300px; max-height:300px;
       border-radius:50%;
       background:
-        radial-gradient(circle at center,rgba(73,216,255,.12),rgba(0,0,0,.14) 62%),
-        linear-gradient(145deg,rgba(255,255,255,.08),rgba(255,255,255,.02));
-      border:1px solid rgba(255,255,255,.14);
-      box-shadow:inset 0 0 38px rgba(0,0,0,.32),0 25px 55px rgba(0,0,0,.24);
+        radial-gradient(circle at center,rgba(72,221,255,.13),rgba(0,0,0,.14) 62%),
+        linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.018));
+      border:1px solid rgba(255,255,255,.15);
+      box-shadow:inset 0 0 42px rgba(0,0,0,.34),0 26px 58px rgba(0,0,0,.27);
       touch-action:none;
     }
-    .joystick::before,.joystick::after { content:""; position:absolute; opacity:.22; }
+    .joystick::before,.joystick::after { content:""; position:absolute; opacity:.19; }
     .joystick::before { left:12%; right:12%; top:50%; height:1px; background:white; }
     .joystick::after { top:12%; bottom:12%; left:50%; width:1px; background:white; }
-    .dir { position:absolute; color:rgba(255,255,255,.25); font-size:18px; font-weight:900; }
+
+    .ring {
+      position:absolute; inset:18%; border-radius:50%;
+      border:1px dashed rgba(255,255,255,.14);
+      pointer-events:none;
+    }
+    .dir { position:absolute; color:rgba(255,255,255,.29); font-size:19px; font-weight:900; pointer-events:none; }
     .dir.up { top:16px; left:50%; transform:translateX(-50%); }
     .dir.down { bottom:16px; left:50%; transform:translateX(-50%); }
     .dir.left { left:18px; top:50%; transform:translateY(-50%); }
     .dir.right { right:18px; top:50%; transform:translateY(-50%); }
+
     .stick {
       position:absolute; left:50%; top:50%;
-      width:94px; height:94px; margin:-47px;
+      width:96px; height:96px; margin:-48px;
       border-radius:50%;
-      background:linear-gradient(145deg,rgba(104,226,255,.95),rgba(65,98,255,.95));
-      border:2px solid rgba(255,255,255,.42);
-      box-shadow:0 13px 30px rgba(17,94,205,.45),inset 0 5px 15px rgba(255,255,255,.26);
       display:grid; place-items:center;
-      font-size:22px;
+      font-size:23px;
+      color:white;
+      background:linear-gradient(145deg,rgba(104,232,255,.98),rgba(65,91,255,.98));
+      border:2px solid rgba(255,255,255,.43);
+      box-shadow:0 14px 32px rgba(17,94,205,.46),inset 0 5px 15px rgba(255,255,255,.27);
       transition:transform .08s ease-out;
+      pointer-events:none;
     }
     .stick.dragging { transition:none; }
 
-    .footer-status { display:flex; justify-content:center; align-items:center; gap:8px; color:var(--muted); font-size:11px; }
+    .readout { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; }
+    .metric {
+      padding:11px 12px; border-radius:15px;
+      background:rgba(0,0,0,.16); border:1px solid rgba(255,255,255,.08);
+    }
+    .metric:last-child { text-align:right; }
+    .metric small { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.8px; }
+    .metric strong { font-size:17px; }
+
+    .speed-ring {
+      position:relative;
+      width:74px; height:74px; border-radius:50%;
+      display:grid; place-items:center;
+      background:conic-gradient(var(--cyan) var(--speed,0%),rgba(255,255,255,.08) 0);
+      box-shadow:0 0 24px rgba(72,221,255,.13);
+    }
+    .speed-ring::before { content:""; position:absolute; width:58px; height:58px; border-radius:50%; background:#10243b; }
+    .speed-ring span { position:relative; font-size:13px; font-weight:850; }
+
+    .hint { margin:11px 4px 0; color:var(--muted); font-size:11px; line-height:1.45; text-align:center; }
+    .footer { display:flex; justify-content:center; align-items:center; gap:8px; color:var(--muted); font-size:11px; }
     .mini-dot { width:6px; height:6px; border-radius:50%; background:var(--green); }
 
-    @media (max-height:690px) {
-      .app { gap:9px; padding-top:10px; padding-bottom:10px; }
-      .panel { border-radius:23px; padding:11px; }
-      .phone-wrap { transform:scale(.79); height:196px; }
-      .tilt-stage { min-height:205px; }
-      .readout { margin-top:-8px; }
+    @media (max-height:680px) {
+      .app { padding-top:10px; padding-bottom:10px; gap:9px; }
+      .panel { padding:12px; border-radius:24px; }
       .joystick { width:230px; height:230px; }
+      .stick { width:82px; height:82px; margin:-41px; }
+      .title-row { padding-bottom:3px; }
     }
   </style>
 </head>
@@ -255,54 +218,41 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     <header>
       <div class="brand">
         <div class="logo">🏎️</div>
-        <div><h1>Autito RC</h1><div class="subtitle">Control Wi‑Fi directo</div></div>
+        <div>
+          <h1>Autito RC</h1>
+          <div class="subtitle">Control Wi-Fi directo</div>
+        </div>
       </div>
       <div class="connection"><span id="netDot" class="dot"></span><span id="netText">Conectado</span></div>
     </header>
 
     <section class="panel">
-      <div class="tabs">
-        <button class="tab active" data-mode="tilt">Inclinación</button>
-        <button class="tab" data-mode="joystick">Joystick</button>
+      <div class="title-row">
+        <span class="mode-title">Joystick proporcional</span>
+        <span class="badge">MODO TANQUE</span>
       </div>
 
-      <div id="tiltMode" class="mode active">
-        <div class="tilt-stage">
-          <div class="phone-wrap">
-            <div class="halo"></div>
-            <div id="phone" class="phone"><div class="cross"></div></div>
-            <div id="arrow" class="arrow">•</div>
-          </div>
+      <div class="joystick-stage">
+        <div id="joystick" class="joystick">
+          <div class="ring"></div>
+          <span class="dir up">▲</span>
+          <span class="dir down">▼</span>
+          <span class="dir left">◀</span>
+          <span class="dir right">▶</span>
+          <div id="stick" class="stick">✦</div>
         </div>
-
-        <div class="readout">
-          <div class="metric"><small>Movimiento</small><strong id="movement">Detenido</strong></div>
-          <div id="speedRing" class="speed-ring"><span id="speedText">0%</span></div>
-          <div class="metric"><small>Potencia</small><strong id="power">0</strong></div>
-        </div>
-
-        <button id="enableTilt" class="primary">Activar inclinación</button>
-        <div id="tiltHint" class="hint">Sostén el celular en una posición cómoda y pulsa el botón para calibrarlo.</div>
       </div>
 
-      <div id="joystickMode" class="mode">
-        <div class="joystick-stage">
-          <div id="joystick" class="joystick">
-            <span class="dir up">▲</span><span class="dir down">▼</span>
-            <span class="dir left">◀</span><span class="dir right">▶</span>
-            <div id="stick" class="stick">✦</div>
-          </div>
-        </div>
-        <div class="readout">
-          <div class="metric"><small>Movimiento</small><strong id="movementJoy">Detenido</strong></div>
-          <div id="speedRingJoy" class="speed-ring"><span id="speedTextJoy">0%</span></div>
-          <div class="metric"><small>Potencia</small><strong id="powerJoy">0</strong></div>
-        </div>
-        <div class="hint">Arrastra el control. Al soltarlo, el auto se detiene inmediatamente.</div>
+      <div class="readout">
+        <div class="metric"><small>Movimiento</small><strong id="movement">Detenido</strong></div>
+        <div id="speedRing" class="speed-ring"><span id="speedText">0%</span></div>
+        <div class="metric"><small>Potencia</small><strong id="power">0</strong></div>
       </div>
+
+      <div class="hint">Arrastra el control en una dirección. Al soltarlo, el auto se detiene inmediatamente.</div>
     </section>
 
-    <div class="footer-status"><span class="mini-dot"></span> Seguridad activa: parada automática por pérdida de señal</div>
+    <div class="footer"><span class="mini-dot"></span> Parada automática activa si se pierde la señal</div>
   </main>
 
 <script>
@@ -310,66 +260,48 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
   'use strict';
 
   const MAX_PWM = 255;
-  const MAX_TILT_DEG = 28;
-  const TILT_DEADZONE_DEG = 4;
   const SEND_INTERVAL_MS = 80;
+  const JOYSTICK_DEADZONE = 0.08;
 
   let desiredLeft = 0;
   let desiredRight = 0;
   let lastSentLeft = null;
   let lastSentRight = null;
   let requestPending = false;
-  let activeMode = 'tilt';
-
-  let tiltEnabled = false;
-  let calibrated = false;
-  let betaZero = 0;
-  let gammaZero = 0;
+  let joyPointer = null;
 
   const $ = id => document.getElementById(id);
-  const tabs = [...document.querySelectorAll('.tab')];
-
-  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
-  const deadband = (value, zone) => {
-    const a = Math.abs(value);
-    if (a <= zone) return 0;
-    return Math.sign(value) * ((a - zone) / (1 - zone));
-  };
+  const joystick = $('joystick');
+  const stick = $('stick');
+  const clamp = (v,min,max) => Math.max(min,Math.min(max,v));
 
   function setNetwork(ok) {
-    $('netDot').classList.toggle('off', !ok);
+    $('netDot').classList.toggle('off',!ok);
     $('netText').textContent = ok ? 'Conectado' : 'Sin señal';
   }
 
-  function movementLabel(throttle, turn) {
-    if (Math.abs(throttle) < 0.02 && Math.abs(turn) < 0.02) return 'Detenido';
+  function movementLabel(throttle,turn) {
+    if (Math.abs(throttle) < .02 && Math.abs(turn) < .02) return 'Detenido';
     if (Math.abs(throttle) >= Math.abs(turn)) return throttle > 0 ? 'Adelante' : 'Atrás';
     return turn > 0 ? 'Derecha' : 'Izquierda';
   }
 
-  function updateReadout(throttle, turn, source) {
-    const intensity = Math.round(Math.max(Math.abs(throttle), Math.abs(turn)) * 100);
-    const power = Math.round(intensity * MAX_PWM / 100);
-    const label = movementLabel(throttle, turn);
-    const suffix = source === 'joy' ? 'Joy' : '';
-    $('movement' + suffix).textContent = label;
-    $('power' + suffix).textContent = power;
-    $('speedText' + suffix).textContent = intensity + '%';
-    $('speedRing' + suffix).style.setProperty('--speed', intensity + '%');
-
-    if (source !== 'joy') {
-      const arrow = $('arrow');
-      const symbols = {Adelante:'↑',Atrás:'↓',Derecha:'→',Izquierda:'←',Detenido:'•'};
-      arrow.textContent = symbols[label];
-      arrow.style.opacity = label === 'Detenido' ? '.55' : '1';
-    }
+  function updateReadout(throttle,turn) {
+    const intensity = Math.round(Math.max(Math.abs(throttle),Math.abs(turn)) * 100);
+    $('movement').textContent = movementLabel(throttle,turn);
+    $('power').textContent = Math.round(intensity * MAX_PWM / 100);
+    $('speedText').textContent = intensity + '%';
+    $('speedRing').style.setProperty('--speed',intensity + '%');
   }
 
-  function driveFromAxes(throttle, turn, source) {
-    throttle = clamp(throttle, -1, 1);
-    turn = clamp(turn, -1, 1);
+  function driveFromAxes(throttle,turn) {
+    throttle = clamp(throttle,-1,1);
+    turn = clamp(turn,-1,1);
 
-    // Sin diagonales: solo se conserva el eje dominante.
+    if (Math.abs(throttle) < JOYSTICK_DEADZONE) throttle = 0;
+    if (Math.abs(turn) < JOYSTICK_DEADZONE) turn = 0;
+
+    // No se permiten diagonales: se conserva solamente el eje dominante.
     if (Math.abs(throttle) >= Math.abs(turn)) turn = 0;
     else throttle = 0;
 
@@ -377,24 +309,27 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let right = 0;
 
     if (throttle !== 0) {
-      left = throttle;
-      right = throttle;
+      // Adelante/atrás invertidos respecto a la versión anterior.
+      // Empujar hacia arriba sigue mostrando "Adelante", pero invierte
+      // la polaridad de ambos motores para corregir su orientación física.
+      left = -throttle;
+      right = -throttle;
     } else if (turn !== 0) {
-      // Giro tipo tanque: ruedas en sentidos opuestos.
+      // Giro tipo tanque. Se mantiene igual que en la versión anterior.
       left = turn;
       right = -turn;
     }
 
     desiredLeft = Math.round(left * MAX_PWM);
     desiredRight = Math.round(right * MAX_PWM);
-    updateReadout(throttle, turn, source);
+    updateReadout(throttle,turn);
   }
 
   function stopNow() {
     desiredLeft = 0;
     desiredRight = 0;
-    updateReadout(0, 0, activeMode === 'joystick' ? 'joy' : 'tilt');
-    fetch('/stop', {cache:'no-store', keepalive:true}).catch(() => {});
+    updateReadout(0,0);
+    fetch('/stop',{cache:'no-store',keepalive:true}).catch(() => {});
   }
 
   async function transmit() {
@@ -404,7 +339,7 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
 
     requestPending = true;
     try {
-      const response = await fetch(`/cmd?l=${desiredLeft}&r=${desiredRight}&t=${Date.now()}`, {cache:'no-store'});
+      const response = await fetch(`/cmd?l=${desiredLeft}&r=${desiredRight}&t=${Date.now()}`,{cache:'no-store'});
       if (!response.ok) throw new Error('HTTP ' + response.status);
       lastSentLeft = desiredLeft;
       lastSentRight = desiredRight;
@@ -415,90 +350,18 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
       requestPending = false;
     }
   }
-  setInterval(transmit, SEND_INTERVAL_MS);
-
-  function calibrate(beta, gamma) {
-    betaZero = beta;
-    gammaZero = gamma;
-    calibrated = true;
-    $('enableTilt').textContent = 'Recentrar inclinación';
-    $('tiltHint').textContent = 'Inclina hacia adelante o atrás. Inclina a los lados para girar sobre su eje.';
-    stopNow();
-  }
-
-  function handleOrientation(event) {
-    if (!tiltEnabled || activeMode !== 'tilt') return;
-    if (event.beta == null || event.gamma == null) return;
-
-    if (!calibrated) {
-      calibrate(event.beta, event.gamma);
-      return;
-    }
-
-    const betaDelta = betaZero - event.beta;
-    const gammaDelta = event.gamma - gammaZero;
-
-    let throttle = clamp(betaDelta / MAX_TILT_DEG, -1, 1);
-    let turn = clamp(gammaDelta / MAX_TILT_DEG, -1, 1);
-
-    const zone = TILT_DEADZONE_DEG / MAX_TILT_DEG;
-    throttle = deadband(throttle, zone);
-    turn = deadband(turn, zone);
-
-    $('phone').style.transform = `rotateX(${clamp(-betaDelta, -22, 22)}deg) rotateY(${clamp(gammaDelta, -22, 22)}deg)`;
-    driveFromAxes(throttle, turn, 'tilt');
-  }
-
-  async function enableTilt() {
-    if (!('DeviceOrientationEvent' in window)) {
-      $('tiltHint').textContent = 'Este navegador no ofrece sensores de orientación. Usa el joystick.';
-      return;
-    }
-
-    try {
-      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        const permission = await DeviceOrientationEvent.requestPermission();
-        if (permission !== 'granted') throw new Error('Permiso denegado');
-      }
-
-      if (!tiltEnabled) {
-        window.addEventListener('deviceorientation', handleOrientation, true);
-        tiltEnabled = true;
-      }
-      calibrated = false;
-      $('enableTilt').textContent = 'Mantén el celular quieto…';
-      $('tiltHint').textContent = 'Calibrando la posición central.';
-    } catch (error) {
-      $('tiltHint').textContent = 'El navegador bloqueó el sensor en esta página HTTP. Abre 192.168.4.1 en Chrome o usa el joystick.';
-      setMode('joystick');
-    }
-  }
-
-  $('enableTilt').addEventListener('click', enableTilt);
-
-  function setMode(mode) {
-    activeMode = mode;
-    tabs.forEach(t => t.classList.toggle('active', t.dataset.mode === mode));
-    $('tiltMode').classList.toggle('active', mode === 'tilt');
-    $('joystickMode').classList.toggle('active', mode === 'joystick');
-    stopNow();
-    resetJoystick();
-  }
-  tabs.forEach(tab => tab.addEventListener('click', () => setMode(tab.dataset.mode)));
-
-  const joystick = $('joystick');
-  const stick = $('stick');
-  let joyPointer = null;
+  setInterval(transmit,SEND_INTERVAL_MS);
 
   function updateJoystick(event) {
     const rect = joystick.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
-    const maxRadius = rect.width * 0.31;
+    const maxRadius = rect.width * .31;
 
     let dx = event.clientX - centerX;
     let dy = event.clientY - centerY;
-    const distance = Math.hypot(dx, dy);
+    const distance = Math.hypot(dx,dy);
+
     if (distance > maxRadius) {
       dx = dx / distance * maxRadius;
       dy = dy / distance * maxRadius;
@@ -507,34 +370,34 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     let x = dx / maxRadius;
     let y = -dy / maxRadius;
 
-    // Un solo eje: vertical o horizontal.
+    // Un solo eje: vertical u horizontal.
     if (Math.abs(y) >= Math.abs(x)) x = 0;
     else y = 0;
 
-    const visualX = x * maxRadius;
-    const visualY = -y * maxRadius;
-    stick.style.transform = `translate(${visualX}px,${visualY}px)`;
-    driveFromAxes(y, x, 'joy');
+    stick.style.transform = `translate(${x * maxRadius}px,${-y * maxRadius}px)`;
+    driveFromAxes(y,x);
   }
 
   function resetJoystick() {
     joyPointer = null;
     stick.classList.remove('dragging');
     stick.style.transform = 'translate(0,0)';
-    if (activeMode === 'joystick') driveFromAxes(0, 0, 'joy');
+    driveFromAxes(0,0);
   }
 
-  joystick.addEventListener('pointerdown', event => {
+  joystick.addEventListener('pointerdown',event => {
     joyPointer = event.pointerId;
     joystick.setPointerCapture(event.pointerId);
     stick.classList.add('dragging');
     updateJoystick(event);
   });
-  joystick.addEventListener('pointermove', event => {
+
+  joystick.addEventListener('pointermove',event => {
     if (event.pointerId === joyPointer) updateJoystick(event);
   });
+
   ['pointerup','pointercancel','lostpointercapture'].forEach(type => {
-    joystick.addEventListener(type, event => {
+    joystick.addEventListener(type,event => {
       if (joyPointer === null || event.pointerId === joyPointer) {
         resetJoystick();
         stopNow();
@@ -542,20 +405,15 @@ const char INDEX_HTML[] PROGMEM = R"rawliteral(
     });
   });
 
-  document.addEventListener('visibilitychange', () => {
+  document.addEventListener('visibilitychange',() => {
     if (document.hidden) stopNow();
   });
-  window.addEventListener('pagehide', stopNow);
-  window.addEventListener('blur', stopNow);
-  window.addEventListener('orientationchange', () => {
-    calibrated = false;
-    stopNow();
-    if (tiltEnabled) $('tiltHint').textContent = 'La pantalla giró. Pulsa “Recentrar inclinación”.';
-  });
+  window.addEventListener('pagehide',stopNow);
+  window.addEventListener('blur',stopNow);
+  window.addEventListener('orientationchange',stopNow);
 
-  // Evita menús, zoom y desplazamientos accidentales durante el manejo.
-  document.addEventListener('contextmenu', event => event.preventDefault());
-  document.addEventListener('touchmove', event => event.preventDefault(), {passive:false});
+  document.addEventListener('contextmenu',event => event.preventDefault());
+  document.addEventListener('touchmove',event => event.preventDefault(),{passive:false});
 })();
 </script>
 </body>
@@ -578,7 +436,7 @@ void setSingleMotor(uint8_t pwmPin, uint8_t pinA, uint8_t pinB, int speedValue) 
     return;
   }
 
-  // La dirección se establece antes de aplicar PWM.
+  // Primero establece la dirección y después aplica el PWM.
   if (speedValue > 0) {
     digitalWrite(pinA, HIGH);
     digitalWrite(pinB, LOW);
@@ -609,7 +467,7 @@ void updateRamp() {
   if (now - lastRampMs < RAMP_INTERVAL_MS) return;
   lastRampMs = now;
 
-  // Una orden cero siempre frena inmediatamente.
+  // Una orden cero detiene inmediatamente el auto.
   if (targetLeft == 0 && targetRight == 0) {
     if (currentLeft != 0 || currentRight != 0) hardStop();
     return;
@@ -666,7 +524,7 @@ void handleStatus() {
 }
 
 void setup() {
-  // No se inicia Serial porque GPIO1/TX y GPIO3/RX controlan el motor derecho.
+  // GPIO1/TX y GPIO3/RX controlan el motor derecho; no se inicia Serial.
   pinMode(PIN_MOTOR_IZQ_PWM, OUTPUT);
   pinMode(PIN_MOTOR_DER_PWM, OUTPUT);
   pinMode(PIN_MOTOR_IZQ_IN1, OUTPUT);
@@ -684,7 +542,7 @@ void setup() {
   WiFi.softAPConfig(apIP, gateway, subnet);
   WiFi.softAP(AP_SSID, AP_PASSWORD, 6, false, 4);
 
-  // Portal cautivo: cualquier dominio se resuelve hacia el autito.
+  // Portal cautivo: cualquier dominio apunta al autito.
   dnsServer.start(DNS_PORT, "*", apIP);
 
   server.on("/", HTTP_GET, handleRoot);
@@ -692,7 +550,7 @@ void setup() {
   server.on("/stop", HTTP_GET, handleStop);
   server.on("/status", HTTP_GET, handleStatus);
 
-  // Rutas comunes que consultan Android, iOS y Windows al detectar un portal.
+  // Rutas consultadas por Android, iOS y Windows para detectar portales cautivos.
   server.on("/generate_204", HTTP_GET, handleRoot);
   server.on("/hotspot-detect.html", HTTP_GET, handleRoot);
   server.on("/fwlink", HTTP_GET, handleRoot);
